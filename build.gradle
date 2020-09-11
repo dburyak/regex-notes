@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'groovy'
+    id 'application'
+}
+
+repositories {
+    mavenLocal()
+    jcenter()
+    mavenCentral()
+}
+
+ext {
+    wrapperGradleVersion = gradleVersion
+}
+
+sourceCompatibility = 11
+targetCompatibility = 11
+
+dependencies {
+    implementation "org.codehaus.groovy:groovy-all:${groovyVersion}"
+
+    // logging
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:${log4j2Version}"
+    implementation "org.apache.logging.log4j:log4j-core:${log4j2Version}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jacksonVersion}"
+}
+
+wrapper {
+    gradleVersion = wrapperGradleVersion
+}
+
+compileGroovy {
+    groovyOptions.verbose = true
+}
