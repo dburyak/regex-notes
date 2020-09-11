@@ -1,0 +1,164 @@
+Regular expressions quick tour
+
+
+great book (for geeks only) http://regex.info/book.html
+
+
+1. The problem
+ * We often have to work with text of some specific format - search something specific in huge text (like count occurrances), check if input from user conforms to some format, etc. Such work with text of specific patterns is very similar in general approach from task to task. But it's very different when you implement it using straightforward approach. And it would require a lot of fine-grained manual chars manipulation.
+
+Example 1: we receive Cognito jwt tokens in incoming requests and we need to reliably identify that this is a Cognito token, not just some other spoof jwt.
+The only reliable way to make sure that this is a cognito token (based on spec) to check value in "iss" claim and verify that it has following format:
+
+{
+  "iss": "https://cognito-idp.{region}.amazonaws.com/{userPoolId}"
+}
+
+NOTE: region should be a valid aws region and userPoolId also is not just any chars string
+
+if (str.startsWith("https://cognito-idp.")) {
+  def substr = str.substring(0, "https://cognito-idp.".size())
+  def region = substr.substring(0, substr.indexOf("."))
+  def containsNonRegionChars = NON_REGION_CHARS.find { region.contains(it) }
+.......
+
+
+Example 2: we want to parse incoming json string into an object and be able to detect LocalDate/LocalDateTime/Instant.... types and automatically convert strings to corresponding time objects
+
+{
+  name: "John",
+  createdAt: "2020-08-27T21:44:14.657409Z"
+}
+
+
+should be parsed as
+[
+  name: "John",
+  createdAt: Instant.parse("2020-08-27T21:44:14.657409Z")
+]
+
+
+def yearStr = jsonStr[0..3]
+if (yearStr.isInteger()) {
+  def year = yearStr.toInteger()
+  def monthStart = jsonStr.indexOf("-")
+  def monthStr = jsonStr(monthStart, monthStart + 2)
+........... < imagine how complex that code would be> ..............
+
+
+
+ * Manual pattern text matching implementation is hard to modify if requirements change
+ * Size and complexity of manual code needed greatly depends on the pattern. The more details in pattern - the more manual code you need... and this is a non-linear relation.
+ * The tasks are actually pretty similar, they use similar library methods for string manipulation. But still implementing new similar task would require to do it from scratch each time. No any code could be reused.
+
+
+
+
+2. Solution
+ * We are working with "patterns". We can define special syntax that allows us to describe those patterns easily.
+ * We need two components:
+ - Well known and standardized mini-language for desribing patterns, textual templates we want to match incoming text against.
+ - Well tested engine that is able to interpret this mini-language and match incoming text against described pattern.
+
+.... and this is all what regular expressions are about. It's a langauge for describing patterns and it's and engine that interprets these patterns and performs matching.
+
+ * Short name - regex or regexp
+
+ * Acutally standardization didn't go very smoothly and we have lots of regex dialects: perl (most popular), grep, extended grep, javascript, google uses own flavor of regex in google sheets, etc... But those syntaxes are >90% similar.
+
+
+
+
+3. What types of problems you can solve with regex
+ * Actually only 4 types of problems
+ - find small portion of text that matches the template in a larger text (check if request body json contains some element without full json parsing)
+ - check if the entire string matches pattern (if the string is a valid date, phone number)
+ - extract some dynamic parts of the text matched by regex pattern (extract region and userPoolId from Cognito example)
+ - replace text portions that match the pattern with something else (replace all credit card numbers with obfuscated variant like 12****9876)
+
+ * Regex are integrated to unix tools:
+ - grep - allows to search for regex pattern match in text or files, can be used to find something specific in the codebase
+   -- example: we need to find such feature tests that do NOT extend from BaseFeatureTest
+dburyak@mint:~/idea/ott/cloffice (*)
+> grep -nrP 'class\s+\w+\s+(?!extends\s+BaseFeatureTest)'
+
+ - sed - allows to search and replace by regex pattern in text or files
+
+
+
+4. Regex in java
+ * Two main classes: java.regex.Pattern and java.regex.Matcher
+  -- Pattern - allows to define and compile regex patterns
+   --- "compilation" means parsing of the regex and building internal representation, something like a graph that represents finite automata
+  -- Matcher - is the regex engine that allows to do text matching against the pattern, is able to intrpret the graph
+
+  - NOTE: 
+   -- pattern compilation is not a lightweight operation, but pattern needs to be compiled only once, it can be reused
+   -- pattern matching complexity varies greatly depending on the pattern
+  
+
+
+
+
+5. Java regex syntax (perl dialect + minor differences)
+https://docs.oracle.com/javase/8/docs/api/java/util/regex/Pattern.html
+
+
+ - regular expressions should be read as "block N1 followed by block N2 followed by block N3" and so on
+
+
+
+
+ - simple char sequence
+_01_CharSequence
+  -- means "character N1 followed by character N2 followed by character N3 ....."
+  -- performance is very fast, almost the same as of "contains" or "indexOf" methods
+
+ - groovy regex extra features examples
+https://mrhaki.blogspot.com/2009/09/groovy-goodness-matchers-for-regular.html
+https://mrhaki.blogspot.com/2009/09/groovy-goodness-using-regular.html
+
+
+
+
+
+ - classes and quantifiers
+_01_ClassesAndQuantifiers
+  -- char class: should be read as "block A followed by any character of the following set : [a, b, c, d, ...]"
+   --- got to java pattern doc, explore what classes are there
+  -- quantifiers: should be read as "block A repeated specific number of times"
+   --- go to java pattern doc, explore what quantifiers options are there
+
+  -- quantifiers types - are about specifying strategy for matching mechanics
+   --- greedy - try to match all and then decrease match range on each iteration until found
+   --- reluctant - try to match minimal possible range and then increase until found
+   --- possessive - try to match all but not try anything else if match fails
+
+  -- capturing groups (and named capturing groups)
+   --- allow to capture some part of regex and extract it with "matcher" object on each found match
+
+  -- lookaround: lokahead, lookbehind
+  -- back refences
+
+
+
+****
+how to use "grep"
+"-P" - option that switches grep to "Pearl" dialect which differs from the one of grep; this is very convenient flag for java devs
+
+
+6. Example: find feature tests classes that are NOT extending from BaseFeatureTest
+dburyak@mint:~/idea/ott/cloffice (*)
+> grep -nrP 'class\s+\w+\s+(?!extends\s+BaseFeatureTest)'
+
+
+7. Example: find usages of "VoucherValidationResponse" class in groovy code:
+> grep -nrP '\bVoucherValidationResponse\b' --include=\*.groovy
+
+we are using "\b" - word boundary predefined character class here
+
+
+
+8. Example: verify that iss claim of the cognito token is a valid one and extract "region" and "userPoolId" parts 
+https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html
+https://aws.amazon.com/premiumsupport/knowledge-center/decode-verify-cognito-json-token/
